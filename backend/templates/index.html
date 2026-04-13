@@ -662,9 +662,6 @@
     </style>
   </head>
   <body>
-    <!-- ══════════════════════════════════════════
-     MODE SELECTION SCREEN
-══════════════════════════════════════════ -->
     <div id="mode-screen">
       <div class="mode-logo">🔬 Smart Question <span>Solver</span></div>
       <div class="mode-sub">Choose how you're using this device</div>
@@ -687,9 +684,6 @@
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════
-     CAMERA MODE (phone)
-══════════════════════════════════════════ -->
     <div id="camera-mode">
       <div class="cam-header">
         <div class="cam-title">📱 Camera Mode</div>
@@ -708,7 +702,37 @@
       </div>
 
       <div class="cam-controls">
-        <!-- countdown bar -->
+        <div
+          class="zoom-control"
+          id="zoom-control"
+          style="
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+          "
+        >
+          <label
+            for="zoom-slider"
+            style="
+              font-size: 0.8rem;
+              color: var(--muted);
+              font-family: &quot;Space Mono&quot;, monospace;
+            "
+          >
+            Zoom: <span id="zoom-val">1x</span>
+          </label>
+          <input
+            type="range"
+            id="zoom-slider"
+            min="1"
+            max="3"
+            step="0.1"
+            value="1"
+            style="width: 100%; accent-color: var(--accent)"
+          />
+        </div>
+
         <div class="countdown-bar-wrap">
           <div class="countdown-bar-bg">
             <div class="countdown-bar-fill" id="bar-fill"></div>
@@ -716,7 +740,6 @@
           <div class="countdown-num" id="bar-num">—</div>
         </div>
 
-        <!-- buttons -->
         <div class="btn-row-cam">
           <button
             class="btn btn-start-cam"
@@ -731,16 +754,12 @@
           </button>
         </div>
 
-        <!-- log -->
         <div class="cam-log" id="cam-log">
           Tap "Start Auto" to begin capturing every 10 seconds...
         </div>
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════
-     VIEWER MODE (laptop / TV)
-══════════════════════════════════════════ -->
     <div id="viewer-mode">
       <header>
         <div class="logo">
@@ -754,7 +773,6 @@
       </header>
 
       <div class="grid">
-        <!-- Live Feed -->
         <div class="card">
           <div class="card-header">📸 Live Camera Feed</div>
           <div class="card-body">
@@ -801,7 +819,6 @@
           </div>
         </div>
 
-        <!-- Solution -->
         <div class="card">
           <div class="card-header">🧠 AI Solution</div>
           <div class="card-body">
@@ -822,9 +839,6 @@
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════
-     JAVASCRIPT
-══════════════════════════════════════════ -->
     <script>
       const INTERVAL = 10; // seconds between captures
       const socket = io();
@@ -905,13 +919,20 @@
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 960 },
+              // Bump resolution to 1080p to force a clearer lens crop
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              // Ask the browser to continuously auto-focus if supported
+              advanced: [{ focusMode: "continuous" }],
             },
             audio: false,
           });
+
           document.getElementById("video").srcObject = stream;
           camLog("✅ Camera ready. Tap Start Auto to begin.");
+
+          // Setup zoom capabilities once the stream is running
+          setupCameraFeatures();
         } catch (e) {
           camLog(
             "❌ Camera error: " +
@@ -921,14 +942,57 @@
         }
       }
 
+      // ── Enable Zoom if Supported ──
+      function setupCameraFeatures() {
+        const track = stream.getVideoTracks()[0];
+        // Browsers require checking capabilities before applying advanced settings
+        const capabilities = track.getCapabilities();
+        const settings = track.getSettings();
+
+        // Check if the device/browser supports zoom
+        if (capabilities.zoom) {
+          const zoomControl = document.getElementById("zoom-control");
+          const zoomSlider = document.getElementById("zoom-slider");
+          const zoomVal = document.getElementById("zoom-val");
+
+          // Reveal the slider and map it to device limits
+          zoomControl.style.display = "flex";
+          zoomSlider.min = capabilities.zoom.min;
+          zoomSlider.max = capabilities.zoom.max;
+          zoomSlider.step = capabilities.zoom.step;
+          zoomSlider.value = settings.zoom || capabilities.zoom.min;
+          zoomVal.textContent = zoomSlider.value + "x";
+
+          // Listen for slider changes and apply zoom to the camera hardware
+          zoomSlider.addEventListener("input", async (e) => {
+            try {
+              const newZoom = parseFloat(e.target.value);
+              zoomVal.textContent = newZoom + "x";
+              await track.applyConstraints({
+                advanced: [{ zoom: newZoom }],
+              });
+            } catch (err) {
+              console.error("Zoom failed:", err);
+            }
+          });
+        } else {
+          console.log("Zoom is not supported by this browser/device combo.");
+        }
+      }
+
       // ── Capture logic ──
       function captureFrame() {
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 960;
-        canvas.getContext("2d").drawImage(video, 0, 0);
-        return canvas.toDataURL("image/jpeg", 0.85);
+
+        // Dynamically match the actual resolution the camera gave us
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        canvas
+          .getContext("2d")
+          .drawImage(video, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", 0.85); // 0.85 keeps file size reasonable
       }
 
       function sendFrame() {
