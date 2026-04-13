@@ -1,7 +1,6 @@
 flask
 flask-socketio
-requests
-pillow
 anthropic
+pillow
 gunicorn
 eventlet
